@@ -1,0 +1,6 @@
+[submodule "vhdl"]
+	path = vhdl
+	url = https://github.com/takum-arithmetic/Takum-Codec-RTL.git
+[submodule "sv"]
+	path = sv
+	url = https://github.com/CCcassiusdjs/Takum-SystemVerilog.git
