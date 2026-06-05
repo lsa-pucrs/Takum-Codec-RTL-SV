@@ -3,4 +3,4 @@
 	url = https://github.com/takum-arithmetic/Takum-Codec-RTL.git
 [submodule "sv"]
 	path = sv
-	url = https://github.com/CCcassiusdjs/Takum-SystemVerilog.git
+	url = https://github.com/lsa-pucrs/Takum-SystemVerilog.git
