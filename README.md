@@ -1,84 +1,59 @@
 # Takum Codec RTL — SystemVerilog + VHDL
 
-Repositório de referência com a implementação **SystemVerilog** do codec Takum, lado a lado com a implementação **VHDL original**.
+Repositório de referência: a conversão **SystemVerilog** do codec Takum lado a
+lado com a implementação **VHDL original**, ambas como submódulos.
 
 ## Submódulos
 
 | Submódulo | Diretório | Descrição |
 |-----------|-----------|-----------|
-| [Takum-Codec-RTL](https://github.com/takum-arithmetic/Takum-Codec-RTL) | `vhdl/` | Implementação original em VHDL pelo autor (Laslo Hunhold) |
-| [Takum-SystemVerilog](https://github.com/CCcassiusdjs/Takum-SystemVerilog) | `sv/` | Conversão para SystemVerilog, validada por simulação exaustiva |
+| [Takum-Codec-RTL](https://github.com/takum-arithmetic/Takum-Codec-RTL) | `vhdl/` | Implementação original em VHDL (Laslo Hunhold, ISC, arXiv 2408.10594) |
+| [Takum-SystemVerilog](https://github.com/lsa-pucrs/Takum-SystemVerilog) | `sv/` | Conversão para SystemVerilog, validada contra um oráculo independente |
 
 ## Clone com submódulos
 
 ```bash
-git clone --recurse-submodules https://github.com/CCcassiusdjs/Takum-Codec-RTL-SV.git
+git clone --recurse-submodules https://github.com/lsa-pucrs/Takum-Codec-RTL-SV.git
 ```
 
 Se já clonou sem `--recurse-submodules`:
 
 ```bash
-git submodule init
-git submodule update
+git submodule update --init --recursive
 ```
 
-## Simulação rápida (SystemVerilog)
+## Estado da conversão SystemVerilog
 
-Requer **Icarus Verilog** (`iverilog`) ou **Verilator** para lint.
+A conversão SV foi **regenerada a partir do VHDL original** e corrigida. Dois
+defeitos de conversão (presentes na primeira tentativa) foram corrigidos e cada
+um tem um teste que falha se o bug reaparecer (verificado por controle
+negativo):
 
-### Predecoder — teste exaustivo (65536 valores para N=16)
+1. **Predecoder, N < 12** — o segmento regime+característica precisa alinhar os
+   bits do takum no topo (MSB) e preencher zeros nos LSBs, como no VHDL
+   (`takum(n-3 downto 0) & (11-n downto 0 => '0')`). A conversão antiga
+   preenchia o lado errado, zerando `regime_bits` e corrompendo quase todo
+   decode em N=8.
+2. **Postencoder, N ≥ 12** — o guarda de underflow deve comparar com `-255`,
+   não com `9'sd255` (= +255, inalcançável). O bug deixava os valores de menor
+   magnitude sem correção (positivo → `0x0000`, negativo → `0x8000`/NaR).
+
+### Verificação
+
+Toda a verificação roda contra um oráculo Python independente derivado da
+especificação (não portado do RTL), com um segundo oráculo de codificação
+baseado em valor para triangulação:
 
 ```bash
 cd sv/
-iverilog -g2012 -o predecoder_tb \
-  rtl/decoder/predecoder.sv \
-  simulation/decoder/predecoder_tb.sv
-./predecoder_tb
-# Saída esperada: PASS: All 65536 values tested successfully.
+bash simulation/run_all.sh          # self-test + gates exaustivos N ∈ {8,12,16}
 ```
 
-### Postencoder — roundtrip test (decode → encode → compara)
-
-```bash
-iverilog -g2012 -o postencoder_tb \
-  rtl/decoder/predecoder.sv \
-  rtl/encoder/postencoder.sv \
-  simulation/encoder/postencoder_tb.sv
-./postencoder_tb
-# Saída esperada: All 16 values roundtrip-tested successfully.
-```
-
-### Verilator lint
-
-```bash
-verilator --lint-only rtl/decoder/predecoder.sv
-verilator --lint-only rtl/encoder/postencoder.sv
-# etc.
-```
-
-## Módulos SystemVerilog
-
-| Módulo | Arquivo | Descrição |
-|--------|---------|-----------|
-| `predecoder` | `rtl/decoder/predecoder.sv` | Decodificador principal: takum → (sign, characteristic, mantissa, precision, is_zero, is_nar) |
-| `decoder_linear` | `rtl/decoder/decoder_linear.sv` | Wrapper linear (saída characteristic) |
-| `decoder_logarithmic` | `rtl/decoder/decoder_logarithmic.sv` | Wrapper logarítmico (saída exponent) |
-| `postencoder` | `rtl/encoder/postencoder.sv` | Encodificador principal: (sign, characteristic, mantissa, is_zero, is_nar) → takum |
-| `encoder_linear` | `rtl/encoder/encoder_linear.sv` | Wrapper linear (entrada characteristic) |
-| `encoder_logarithmic` | `rtl/encoder/encoder_logarithmic.sv` | Wrapper logarítmico (entrada exponent) |
-| `takum_pkg` | `rtl/takum_pkg.sv` | Tipos e constantes compartilhados |
-
-Parâmetro principal: `N` (bit width, padrão 16, faixa 2–254).
-
-## Notas de conversão VHDL → SV
-
-A lógica RTL é **idêntica** à original em VHDL. Mudanças foram apenas sintáticas ou de compatibilidade:
-
-1. **Shift aritmético**: VHDL `shift_right(signed(...))` → SV `logic signed` + `>>>`
-2. **Padding**: VHDL `(6 downto 0 => '0')` = 7 zeros (não 6). Bug corrigido na conversão.
-3. **Arrays localparam**: iverilog não suporta → funções lookup
-4. **`generate`**: → `always_comb` com part-select (`+:`)
-5. **`numeric_std`**: → casts `$signed()`, `$unsigned()`, slicing
+Cobertura: predecoder `OUTPUT_EXPONENT` 0 e 1, postencoder roundtrip +
+fronteira de saturação + varredura completa `(sinal, característica, mantissa)`,
+e os quatro wrappers de ponta a ponta. Detalhes — incluindo duas propriedades
+do VHDL original reproduzidas fielmente (flush subnormal; o par linear não é
+inverso para entradas positivas) — estão no `README.md` do submódulo `sv/`.
 
 ## Licença
 
